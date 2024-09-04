@@ -54,7 +54,7 @@ template: {
 			}
 
 			stringValue: op.#ConvertString & {bt: base64.Decode(null, read.value.data[parameter.url.secretRef.key])}
-			http:        op.#HTTPPost & {
+			http: op.#HTTPPost & {
 				url: stringValue.str
 				request: {
 					body: data.value

@@ -36,7 +36,7 @@ template: {
 				}
 			}
 			template: configMap.value.data["application"]
-			apply:    op.#Apply & {
+			apply: op.#Apply & {
 				value: yaml.Unmarshal(template)
 			}
 			wait: op.#ConditionalWait & {

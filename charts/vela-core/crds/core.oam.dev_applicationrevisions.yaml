@@ -162,6 +162,10 @@ spec:
                               type: array
                             type:
                               type: string
+                            version:
+                              description: Version of the component definition that
+                                needs to be taken
+                              type: string
                           required:
                           - name
                           - type
@@ -1062,6 +1066,9 @@ spec:
                                 for the abstraction
                               type: string
                           type: object
+                        version:
+                          description: Adding version as optional field
+                          type: string
                         workload:
                           description: Workload is a workload type descriptor
                           properties:

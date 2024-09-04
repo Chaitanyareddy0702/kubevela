@@ -231,10 +231,14 @@ func DeepEqualDefRevision(old, new *v1beta1.DefinitionRevision) bool {
 }
 
 func getDefNextRevision(defRev *v1beta1.DefinitionRevision, lastRevision *common.Revision) (string, int64) {
+
 	var nextRevision int64 = 1
 	if lastRevision != nil {
 		nextRevision = lastRevision.Revision + 1
 	}
+
+	var version = defRev.Spec.ComponentDefinition.Spec.Version
+
 	var name string
 	switch defRev.Spec.DefinitionType {
 	case common.ComponentType:
@@ -246,7 +250,13 @@ func getDefNextRevision(defRev *v1beta1.DefinitionRevision, lastRevision *common
 	case common.WorkflowStepType:
 		name = defRev.Spec.WorkflowStepDefinition.Name
 	}
-	defRevName := strings.Join([]string{name, fmt.Sprintf("v%d", nextRevision)}, "-")
+	var defRevName string
+
+	if version == "" {
+		defRevName = strings.Join([]string{name, fmt.Sprintf("v%d", nextRevision)}, "-")
+	} else {
+		defRevName = strings.Join([]string{name, version}, "-")
+	}
 	return defRevName, nextRevision
 }
 
