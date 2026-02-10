@@ -76,13 +76,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// Update status to Progressing
-	if clusterReg.Status.Phase != v1beta1.ClusterRegistrationPhaseProgressing {
-		clusterReg.Status.Phase = v1beta1.ClusterRegistrationPhaseProgressing
-		if err := r.Status().Update(ctx, clusterReg); err != nil {
-			klog.ErrorS(err, "Failed to update status to Progressing", "name", clusterReg.Name)
-			return ctrl.Result{}, err
-		}
+	// Check if already successfully registered and no spec changes
+	// This prevents infinite reconciliation loops
+	if clusterReg.Status.Phase == v1beta1.ClusterRegistrationPhaseReady &&
+		clusterReg.Status.ObservedGeneration == clusterReg.Generation {
+		klog.V(4).InfoS("ClusterRegistration already in Ready state with no changes, skipping",
+			"name", clusterReg.Name, "generation", clusterReg.Generation)
+		return ctrl.Result{}, nil
 	}
 
 	// Get cluster name (default to metadata.name if not specified)
@@ -95,7 +95,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if clusterName == multicluster.ClusterLocalName {
 		err := errors.New("cluster name cannot be 'local', it is reserved")
 		r.updateFailedStatus(ctx, clusterReg, err.Error())
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil // Don't return error to avoid requeue
+	}
+
+	// Update status to Progressing only if not already progressing
+	if clusterReg.Status.Phase != v1beta1.ClusterRegistrationPhaseProgressing &&
+		clusterReg.Status.Phase != v1beta1.ClusterRegistrationPhaseReady {
+		clusterReg.Status.Phase = v1beta1.ClusterRegistrationPhaseProgressing
+		clusterReg.Status.Message = "Registering cluster..."
+		if err := r.Status().Update(ctx, clusterReg); err != nil {
+			klog.ErrorS(err, "Failed to update status to Progressing", "name", clusterReg.Name)
+			return ctrl.Result{}, err
+		}
+		// Return here to let the status update trigger the next reconcile
+		return ctrl.Result{}, nil
 	}
 
 	// Write kubeconfig to a temporary file
@@ -103,14 +116,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		klog.ErrorS(err, "Failed to create temporary kubeconfig file", "name", clusterReg.Name)
 		r.updateFailedStatus(ctx, clusterReg, "Failed to create temporary file: "+err.Error())
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
 	}
 	defer os.Remove(tmpfile.Name())
 
 	if _, err := tmpfile.Write([]byte(clusterReg.Spec.Kubeconfig)); err != nil {
 		klog.ErrorS(err, "Failed to write kubeconfig to temporary file", "name", clusterReg.Name)
 		r.updateFailedStatus(ctx, clusterReg, "Failed to write kubeconfig: "+err.Error())
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
 	}
 	tmpfile.Close()
 
@@ -119,7 +132,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err != nil {
 		klog.ErrorS(err, "Failed to load kubeconfig", "name", clusterReg.Name)
 		r.updateFailedStatus(ctx, clusterReg, "Failed to load kubeconfig: "+err.Error())
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
 	}
 
 	// Set create namespace (default to vela-system)
@@ -132,22 +145,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := clusterConfig.SetClusterName(clusterName).SetCreateNamespace(createNamespace).Validate(); err != nil {
 		klog.ErrorS(err, "Cluster configuration validation failed", "name", clusterReg.Name)
 		r.updateFailedStatus(ctx, clusterReg, "Validation failed: "+err.Error())
-		return ctrl.Result{}, err
-	}
-
-	// Check if cluster already exists
-	existingCluster, err := multicluster.NewClusterClient(r.Client).Get(ctx, clusterName)
-	if err != nil && !apierrors.IsNotFound(err) {
-		klog.ErrorS(err, "Failed to check existing cluster", "name", clusterReg.Name, "clusterName", clusterName)
-		r.updateFailedStatus(ctx, clusterReg, "Failed to check existing cluster: "+err.Error())
-		return ctrl.Result{}, err
-	}
-
-	if existingCluster != nil {
-		klog.InfoS("Cluster already exists, updating", "name", clusterReg.Name, "clusterName", clusterName)
+		return ctrl.Result{}, nil
 	}
 
 	// Register the cluster by creating/updating the secret
+	// RegisterByVelaSecret is idempotent - it creates or updates the secret
 	if err := clusterConfig.RegisterByVelaSecret(ctx, r.Client); err != nil {
 		klog.ErrorS(err, "Failed to register cluster", "name", clusterReg.Name, "clusterName", clusterName)
 		r.updateFailedStatus(ctx, clusterReg, "Failed to register cluster: "+err.Error())
@@ -156,28 +158,27 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	klog.InfoS("Successfully registered cluster", "name", clusterReg.Name, "clusterName", clusterName, "endpoint", clusterConfig.Cluster.Server)
 
-	// Update status to Ready
-	clusterReg.Status.Phase = v1beta1.ClusterRegistrationPhaseReady
-	clusterReg.Status.Message = "Cluster successfully registered"
-	clusterReg.Status.ObservedGeneration = clusterReg.Generation
-	now := metav1.Now()
-	clusterReg.Status.LastReconcileTime = &now
-
 	// Set cluster info
 	credentialType := "X509Certificate"
 	if len(clusterConfig.AuthInfo.Token) > 0 || clusterConfig.AuthInfo.Exec != nil {
 		credentialType = "ServiceAccountToken"
 	}
 
+	// Update status to Ready
+	clusterReg.Status.Phase = v1beta1.ClusterRegistrationPhaseReady
+	clusterReg.Status.Message = "Cluster successfully registered"
+	clusterReg.Status.ObservedGeneration = clusterReg.Generation
+	now := metav1.Now()
+	clusterReg.Status.LastReconcileTime = &now
 	clusterReg.Status.ClusterInfo = &v1beta1.ClusterInfo{
 		Endpoint:       clusterConfig.Cluster.Server,
 		CredentialType: credentialType,
 	}
 
-	// Update condition
+	// Set condition (replace, don't append to avoid growing list)
 	readyCondition := condition.Available()
 	readyCondition.Message = "Cluster successfully registered and ready"
-	clusterReg.Status.Conditions = append(clusterReg.Status.Conditions, readyCondition)
+	clusterReg.Status.Conditions = []condition.Condition{readyCondition}
 
 	if err := r.Status().Update(ctx, clusterReg); err != nil {
 		klog.ErrorS(err, "Failed to update status to Ready", "name", clusterReg.Name)
@@ -218,10 +219,14 @@ func (r *Reconciler) handleDeletion(ctx context.Context, clusterReg *v1beta1.Clu
 func (r *Reconciler) updateFailedStatus(ctx context.Context, clusterReg *v1beta1.ClusterRegistration, message string) {
 	clusterReg.Status.Phase = v1beta1.ClusterRegistrationPhaseFailed
 	clusterReg.Status.Message = message
+	clusterReg.Status.ObservedGeneration = clusterReg.Generation
+	now := metav1.Now()
+	clusterReg.Status.LastReconcileTime = &now
 
 	failedCondition := condition.Unavailable()
 	failedCondition.Message = message
-	clusterReg.Status.Conditions = append(clusterReg.Status.Conditions, failedCondition)
+	// Replace conditions instead of appending to prevent infinite growth
+	clusterReg.Status.Conditions = []condition.Condition{failedCondition}
 
 	if err := r.Status().Update(ctx, clusterReg); err != nil {
 		klog.ErrorS(err, "Failed to update failed status", "name", clusterReg.Name)
@@ -236,7 +241,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 // Setup adds a controller that reconciles ClusterRegistration
-func Setup(mgr ctrl.Manager, args interface{}) error {
+func Setup(mgr ctrl.Manager, args any) error {
 	reconciler := &Reconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
