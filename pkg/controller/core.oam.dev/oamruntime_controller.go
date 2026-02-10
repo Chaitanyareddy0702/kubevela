@@ -42,4 +42,8 @@ type Args struct {
 
 	// IgnoreDefinitionWithoutControllerRequirement indicates that trait/component/workflowstep definition controller will not process the definition without 'definition.oam.dev/controller-version-require' annotation.
 	IgnoreDefinitionWithoutControllerRequirement bool
+
+	// EnableClusterGateway indicates whether cluster-gateway is enabled for multicluster support.
+	// When disabled, ClusterRegistration controller will not be set up.
+	EnableClusterGateway bool
 }

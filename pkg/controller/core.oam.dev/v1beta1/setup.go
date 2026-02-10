@@ -20,6 +20,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/oam-dev/kubevela/pkg/controller/core.oam.dev/v1beta1/application"
+	"github.com/oam-dev/kubevela/pkg/controller/core.oam.dev/v1beta1/clusterregistration"
 	"github.com/oam-dev/kubevela/pkg/controller/core.oam.dev/v1beta1/core/components/componentdefinition"
 	"github.com/oam-dev/kubevela/pkg/controller/core.oam.dev/v1beta1/core/policies/policydefinition"
 	"github.com/oam-dev/kubevela/pkg/controller/core.oam.dev/v1beta1/core/traits/traitdefinition"
@@ -37,5 +38,13 @@ func Setup(mgr ctrl.Manager, args controller.Args) error {
 			return err
 		}
 	}
+
+	// Setup ClusterRegistration controller only when multi-cluster is enabled
+	if args.EnableClusterGateway {
+		if err := clusterregistration.Setup(mgr, nil); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

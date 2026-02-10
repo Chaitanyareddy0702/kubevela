@@ -42,6 +42,7 @@ func NewControllerConfig() *ControllerConfig {
 			ConcurrentReconciles:                         4,
 			IgnoreAppWithoutControllerRequirement:        false,
 			IgnoreDefinitionWithoutControllerRequirement: false,
+			EnableClusterGateway:                         false,
 		},
 	}
 }
