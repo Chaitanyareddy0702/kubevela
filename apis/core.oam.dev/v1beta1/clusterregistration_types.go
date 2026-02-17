@@ -33,10 +33,27 @@ type ClusterRegistrationSpec struct {
 	// +optional
 	Alias string `json:"alias,omitempty"`
 
-	// Kubeconfig is the raw kubeconfig content for the cluster to be joined
-	// This is a simplified POC approach where we just paste the kubeconfig directly
+	// Server is the API server endpoint of the cluster to join (e.g. https://192.168.1.100:6443)
 	// +required
-	Kubeconfig string `json:"kubeconfig"`
+	Server string `json:"server"`
+
+	// CAData is the base64-encoded CA certificate data for the cluster's API server
+	// If not provided and InsecureSkipTLSVerify is false, TLS verification will use system CAs
+	// +optional
+	CAData string `json:"caData,omitempty"`
+
+	// InsecureSkipTLSVerify skips TLS certificate verification when connecting to the cluster
+	// Not recommended for production use
+	// +optional
+	InsecureSkipTLSVerify bool `json:"insecureSkipTLSVerify,omitempty"`
+
+	// CredentialSecret is a reference to a Kubernetes Secret in the same namespace
+	// that contains the authentication credentials for the cluster.
+	// The Secret must contain one of:
+	//   - "client-certificate-data" + "client-key-data" for X509 certificate authentication
+	//   - "token" for bearer token / ServiceAccount authentication
+	// +required
+	CredentialSecret CredentialSecretRef `json:"credentialSecret"`
 
 	// CreateNamespace specifies the namespace to create in the managed cluster
 	// Defaults to "vela-system"
@@ -46,6 +63,13 @@ type ClusterRegistrationSpec struct {
 	// Labels are custom labels to add to the cluster
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// CredentialSecretRef is a reference to a Kubernetes Secret containing cluster credentials
+type CredentialSecretRef struct {
+	// Name is the name of the Secret in the same namespace as the ClusterRegistration
+	// +required
+	Name string `json:"name"`
 }
 
 // ClusterRegistrationPhase defines the phase of cluster registration

@@ -61,6 +61,11 @@ spec:
               alias:
                 description: Alias is a human-readable name for the cluster
                 type: string
+              caData:
+                description: |-
+                  CAData is the base64-encoded CA certificate data for the cluster's API server
+                  If not provided and InsecureSkipTLSVerify is false, TLS verification will use system CAs
+                type: string
               clusterName:
                 description: |-
                   ClusterName is the name of the cluster to register
@@ -71,18 +76,36 @@ spec:
                   CreateNamespace specifies the namespace to create in the managed cluster
                   Defaults to "vela-system"
                 type: string
-              kubeconfig:
+              credentialSecret:
                 description: |-
-                  Kubeconfig is the raw kubeconfig content for the cluster to be joined
-                  This is a simplified POC approach where we just paste the kubeconfig directly
-                type: string
+                  CredentialSecret is a reference to a Kubernetes Secret in the same namespace
+                  that contains the authentication credentials for the cluster.
+                  The Secret must contain one of:
+                    - "client-certificate-data" + "client-key-data" for X509 certificate authentication
+                    - "token" for bearer token / ServiceAccount authentication
+                properties:
+                  name:
+                    description: Name is the name of the Secret in the same namespace as the ClusterRegistration
+                    type: string
+                required:
+                - name
+                type: object
+              insecureSkipTLSVerify:
+                description: |-
+                  InsecureSkipTLSVerify skips TLS certificate verification when connecting to the cluster
+                  Not recommended for production use
+                type: boolean
               labels:
                 additionalProperties:
                   type: string
                 description: Labels are custom labels to add to the cluster
                 type: object
+              server:
+                description: Server is the API server endpoint of the cluster to join (e.g. https://192.168.1.100:6443)
+                type: string
             required:
-            - kubeconfig
+            - server
+            - credentialSecret
             type: object
           status:
             description: ClusterRegistrationStatus defines the observed state of ClusterRegistration

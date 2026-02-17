@@ -18,13 +18,16 @@ package clusterregistration
 
 import (
 	"context"
-	"os"
+	"encoding/base64"
 	"time"
 
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	apitypes "k8s.io/apimachinery/pkg/types"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -111,27 +114,58 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	// Write kubeconfig to a temporary file
-	tmpfile, err := os.CreateTemp("", "kubeconfig-*.yaml")
-	if err != nil {
-		klog.ErrorS(err, "Failed to create temporary kubeconfig file", "name", clusterReg.Name)
-		r.updateFailedStatus(ctx, clusterReg, "Failed to create temporary file: "+err.Error())
-		return ctrl.Result{}, nil
+	// Read the credential secret from the same namespace
+	credSecret := &corev1.Secret{}
+	credSecretKey := apitypes.NamespacedName{
+		Name:      clusterReg.Spec.CredentialSecret.Name,
+		Namespace: clusterReg.Namespace,
 	}
-	defer os.Remove(tmpfile.Name())
-
-	if _, err := tmpfile.Write([]byte(clusterReg.Spec.Kubeconfig)); err != nil {
-		klog.ErrorS(err, "Failed to write kubeconfig to temporary file", "name", clusterReg.Name)
-		r.updateFailedStatus(ctx, clusterReg, "Failed to write kubeconfig: "+err.Error())
-		return ctrl.Result{}, nil
+	if err := r.Get(ctx, credSecretKey, credSecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.ErrorS(err, "Credential secret not found", "name", clusterReg.Name, "secretName", credSecretKey.Name)
+			r.updateFailedStatus(ctx, clusterReg, "Credential secret not found: "+credSecretKey.Name)
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		klog.ErrorS(err, "Failed to get credential secret", "name", clusterReg.Name)
+		return ctrl.Result{}, err
 	}
-	tmpfile.Close()
 
-	// Load and validate the kubeconfig
-	clusterConfig, err := multicluster.LoadKubeClusterConfigFromFile(tmpfile.Name())
-	if err != nil {
-		klog.ErrorS(err, "Failed to load kubeconfig", "name", clusterReg.Name)
-		r.updateFailedStatus(ctx, clusterReg, "Failed to load kubeconfig: "+err.Error())
+	// Build KubeClusterConfig from individual fields
+	clusterConfig := &multicluster.KubeClusterConfig{
+		Config: &clientcmdapi.Config{},
+		Cluster: &clientcmdapi.Cluster{
+			Server:                clusterReg.Spec.Server,
+			InsecureSkipTLSVerify: clusterReg.Spec.InsecureSkipTLSVerify,
+		},
+		AuthInfo: &clientcmdapi.AuthInfo{},
+		// Allow overwriting existing cluster registrations on re-reconcile
+		ClusterAlreadyExistCallback: func(string) bool { return true },
+	}
+
+	// Set CA data if provided
+	if clusterReg.Spec.CAData != "" {
+		caBytes, err := base64.StdEncoding.DecodeString(clusterReg.Spec.CAData)
+		if err != nil {
+			klog.ErrorS(err, "Failed to decode caData", "name", clusterReg.Name)
+			r.updateFailedStatus(ctx, clusterReg, "Failed to decode caData: "+err.Error())
+			return ctrl.Result{}, nil
+		}
+		clusterConfig.Cluster.CertificateAuthorityData = caBytes
+	}
+
+	// Read credentials from the secret
+	if token, ok := credSecret.Data["token"]; ok && len(token) > 0 {
+		clusterConfig.AuthInfo.Token = string(token)
+	} else if certData, certOk := credSecret.Data["client-certificate-data"]; certOk {
+		keyData, keyOk := credSecret.Data["client-key-data"]
+		if !keyOk || len(keyData) == 0 {
+			r.updateFailedStatus(ctx, clusterReg, "Credential secret has client-certificate-data but missing client-key-data")
+			return ctrl.Result{}, nil
+		}
+		clusterConfig.AuthInfo.ClientCertificateData = certData
+		clusterConfig.AuthInfo.ClientKeyData = keyData
+	} else {
+		r.updateFailedStatus(ctx, clusterReg, "Credential secret must contain either 'token' or 'client-certificate-data'+'client-key-data'")
 		return ctrl.Result{}, nil
 	}
 
@@ -160,7 +194,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	// Set cluster info
 	credentialType := "X509Certificate"
-	if len(clusterConfig.AuthInfo.Token) > 0 || clusterConfig.AuthInfo.Exec != nil {
+	if len(clusterConfig.AuthInfo.Token) > 0 {
 		credentialType = "ServiceAccountToken"
 	}
 

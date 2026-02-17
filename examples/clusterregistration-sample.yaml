@@ -1,7 +1,25 @@
 # ClusterRegistration Sample
-# This example shows how to join a cluster to KubeVela by creating a ClusterRegistration resource
-# with an inline kubeconfig
+# This example shows how to join a cluster to KubeVela using individual connection parameters
+# and a Secret for credentials
 
+# Step 1: Create a Secret containing the spoke cluster's credentials
+# The secret must contain either:
+#   - "client-certificate-data" + "client-key-data" (for X509 cert auth)
+#   - "token" (for bearer token / ServiceAccount auth)
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: spoke-1-credentials
+  namespace: vela-system
+type: Opaque
+data:
+  # These are base64-encoded client certificate and key from the spoke cluster
+  client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJrVENDQVRlZ0F3SUJBZ0lJZlYydUlRVGZsZnN3Q2dZSUtvWkl6ajBFQXdJd0l6RWhNQjhHQTFVRUF3d1kKYXpOekxXTnNhV1Z1ZEMxallVQXhOemN4TWpRNU1UUXpNQjRYRFRJMk1ESXhOakV6TXprd00xb1hEVEkzTURJeApOakV6TXprd00xb3dNREVYTUJVR0ExVUVDaE1PYzNsemRHVnRPbTFoYzNSbGNuTXhGVEFUQmdOVkJBTVRESE41CmMzUmxiVHBoWkcxcGJqQlpNQk1HQnlxR1NNNDlBZ0VHQ0NxR1NNNDlBd0VIQTBJQUJQWkEyZUJZKzdTMjFHUlgKVys1V3RxUGs5dHVCc3o5cC9hblY2M3NESVhEc3dEYmg5ZjFlNTRQMTdRQ0Y5cXJSWmxvVU1SQ2RWVWxMQU1pTwpEK2dLWm5TalNEQkdNQTRHQTFVZER3RUIvd1FFQXdJRm9EQVRCZ05WSFNVRUREQUtCZ2dyQmdFRkJRY0RBakFmCkJnTlZIU01FR0RBV2dCUXVKOVlqWHJvNWVRSXJmWVBIY2JlNE1iNkpsekFLQmdncWhrak9QUVFEQWdOSUFEQkYKQWlBbDFicWtoc1JiWlNxbXBKYTkyVEFaR1FMS2ladkRmNlc3VkFIc3BjNHlHQUloQU5XQ0V4NE1PSjJYMTBkQgo0OWs0OEZXZHJBTEp3ZzVkemNod1QwaTNJV2dLCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0KLS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJkakNDQVIyZ0F3SUJBZ0lCQURBS0JnZ3Foa2pPUFFRREFqQWpNU0V3SHdZRFZRUUREQmhyTTNNdFkyeHAKWlc1MExXTmhRREUzTnpFeU5Ea3hORE13SGhjTk1qWXdNakUyTVRNek9UQXpXaGNOTXpZd01qRTBNVE16T1RBegpXakFqTVNFd0h3WURWUVFEREJock0zTXRZMnhwWlc1MExXTmhRREUzTnpFeU5Ea3hORE13V1RBVEJnY3Foa2pPClBRSUJCZ2dxaGtqT1BRTUJCd05DQUFSOW5vZ1lOMTZTUkN2eDY3eXRyaTVRbXBkWUJycVIxRkJnUWJHVmQyb3oKL1NjVTJUVFQ3Z2pVWFlRUWQ0NWUxL0wyd1FHdjh0MmlHbVBPdDV1VXpadUVvMEl3UURBT0JnTlZIUThCQWY4RQpCQU1DQXFRd0R3WURWUjBUQVFIL0JBVXdBd0VCL3pBZEJnTlZIUTRFRmdRVUxpZldJMTY2T1hrQ0szMkR4M0czCnVERytpWmN3Q2dZSUtvWkl6ajBFQXdJRFJ3QXdSQUlnVzFpQzRMNExUaGR5Ykpqa1RhK2wrcEpqL2J3VTdnRW4KZGV2K3ZKNE14alVDSUJNUmxvQUh4WnFxbmw1bEhOUUNvZnNQM3JPcXA2Y3NkSy9JT3NWcGhWa1oKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+  client-key-data: LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUtoMVgvbTlmRFhjdzI1QS9SLzRpSjhQZXVjVTdSbUw2eHN1ZGkvLy9ZTlJvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFOWtEWjRGajd0TGJVWkZkYjdsYTJvK1QyMjRHelAybjlxZFhyZXdNaGNPekFOdUgxL1Y3bgpnL1h0QUlYMnF0Rm1XaFF4RUoxVlNVc0F5STRQNkFwbWRBPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=
+
+# Step 2: Create the ClusterRegistration resource
+---
 apiVersion: core.oam.dev/v1beta1
 kind: ClusterRegistration
 metadata:
@@ -15,29 +33,18 @@ spec:
   # alias is a human-readable name for the cluster (optional)
   alias: "spoke-1"
 
-  # kubeconfig is the complete kubeconfig content for the cluster to join
-  # Simply copy-paste your kubeconfig file content here
-  kubeconfig: |
-    apiVersion: v1
-    clusters:
-    - cluster:
-        insecure-skip-tls-verify: true
-        server: https://192.168.29.196:64627
-      name: k3d-spoke
-    contexts:
-    - context:
-        cluster: k3d-spoke
-        user: admin@k3d-spoke
-      name: k3d-spoke
-    current-context: k3d-spoke
-    kind: Config
-    preferences: {}
-    users:
-    - name: admin@k3d-spoke
-      user:
-        client-certificate-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJrakNDQVRlZ0F3SUJBZ0lJWld1T2xFR0JubUV3Q2dZSUtvWkl6ajBFQXdJd0l6RWhNQjhHQTFVRUF3d1kKYXpOekxXTnNhV1Z1ZEMxallVQXhOemN3TmpJeU1qQTNNQjRYRFRJMk1ESXdPVEEzTXpBd04xb1hEVEkzTURJdwpPVEEzTXpBd04xb3dNREVYTUJVR0ExVUVDaE1PYzNsemRHVnRPbTFoYzNSbGNuTXhGVEFUQmdOVkJBTVRESE41CmMzUmxiVHBoWkcxcGJqQlpNQk1HQnlxR1NNNDlBZ0VHQ0NxR1NNNDlBd0VIQTBJQUJCdmhTQ1J1bkp3QVpVWmoKNmRVb1BVMzVEWWNRb3hrdUw0M2M5NWNIeE1zR0VOWHpZVWNyT2srdTNHQmVBcG9ZaXliUnFxK3NFQmJHbHpYNgpYZkE3QTNXalNEQkdNQTRHQTFVZER3RUIvd1FFQXdJRm9EQVRCZ05WSFNVRUREQUtCZ2dyQmdFRkJRY0RBakFmCkJnTlZIU01FR0RBV2dCVHdEK1lSbHNnczduUUNuWXlKWUs2bmgvSERZekFLQmdncWhrak9QUVFEQWdOSkFEQkcKQWlFQTRubHV5RENLbFRZV0EzQWtNc0h2MlkvL01YY01NY3BnWnNzVzRvbEhyYUlDSVFETWNuOFN0ZW9DMzNFaApLNVhHa0puRXlIV3lodWkvdEUzVXVPQngxanErZVE9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCi0tLS0tQkVHSU4gQ0VSVElGSUNBVEUtLS0tLQpNSUlCZGpDQ0FSMmdBd0lCQWdJQkFEQUtCZ2dxaGtqT1BRUURBakFqTVNFd0h3WURWUVFEREJock0zTXRZMnhwClpXNTBMV05oUURFM056QTJNakl5TURjd0hoY05Nall3TWpBNU1EY3pNREEzV2hjTk16WXdNakEzTURjek1EQTMKV2pBak1TRXdId1lEVlFRRERCaHJNM010WTJ4cFpXNTBMV05oUURFM056QTJNakl5TURjd1dUQVRCZ2NxaGtqTwpQUUlCQmdncWhrak9QUU1CQndOQ0FBVDd5K0ZVcEQzYlhtcFRQb1lPQ0hnd2Y4bWkwc3NTSlFoQWVUK3lPdS9wClRwNmxvUksrTnhHSWp4R21VU3JOSDY0anh2bUhnK1NkRkt6czBnajM0eUJrbzBJd1FEQU9CZ05WSFE4QkFmOEUKQkFNQ0FxUXdEd1lEVlIwVEFRSC9CQVV3QXdFQi96QWRCZ05WSFE0RUZnUVU4QS9tRVpiSUxPNTBBcDJNaVdDdQpwNGZ4dzJNd0NnWUlLb1pJemowRUF3SURSd0F3UkFJZ011UjJBczB6dDExWjFDVm0zc3diaEpPdjh0UlNtMm0vClNUWlRZQTNOL3A0Q0lEUWhwZHM5a0UvZUZGTlNjMHFYUVlvejNjS1g5Z2t0ODF5U0xNWW85S0o1Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
-        client-key-data: LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUxvNHEvZTZzenVGN1VlckpHTnFGSng5QmhBOHU5ekhFQWhTMnp4QlhzOHlvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFRytGSUpHNmNuQUJsUm1QcDFTZzlUZmtOaHhDakdTNHZqZHozbHdmRXl3WVExZk5oUnlzNgpUNjdjWUY0Q21oaUxKdEdxcjZ3UUZzYVhOZnBkOERzRGRRPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=
+  # server is the API server endpoint of the spoke cluster
+  server: https://192.168.29.196:54430
 
+  # insecureSkipTLSVerify skips TLS verification (not recommended for production)
+  insecureSkipTLSVerify: true
+
+  # caData is the base64-encoded CA certificate (use this instead of insecureSkipTLSVerify for production)
+  # caData: "LS0tLS1CRUdJTi..."
+
+  # credentialSecret references the Secret containing auth credentials
+  credentialSecret:
+    name: spoke-1-credentials
 
   # createNamespace specifies the namespace to create in the managed cluster
   # Defaults to "vela-system"
