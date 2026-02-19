@@ -28,6 +28,10 @@ var (
 	oldCRD = map[string]bool{
 		"workloaddefinitions": true,
 	}
+	// CRDs that are managed by Helm templates and should not be copied to the static crds/ directory
+	templateManagedCRD = map[string]bool{
+		"clusterregistrations": true,
+	}
 )
 
 func main() {
@@ -59,7 +63,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "failed to read file", err)
 			return err
 		}
-		if oldCRD[resourceName] {
+		if oldCRD[resourceName] || templateManagedCRD[resourceName] {
 			return nil
 		}
 		writeNew(info.Name(), data)
