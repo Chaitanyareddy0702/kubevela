@@ -1,0 +1,32 @@
+apiVersion: core.oam.dev/v1beta1
+kind: Application
+metadata:
+  name: multicluster-app
+  namespace: default
+spec:
+  components:
+    - name: webservice-app
+      type: webservice
+      properties:
+        image: stefanprodan/podinfo:6.0.0
+        ports:
+          - port: 9898
+            expose: true
+      traits:
+        - type: scaler
+          properties:
+            replicas: 1
+  policies:
+    - name: topology-default
+      type: topology
+      properties:
+        clusters:
+          - local
+          - spoke-1
+  workflow:
+    steps:
+      - name: deploy
+        type: deploy
+        properties:
+          policies:
+            - topology-default

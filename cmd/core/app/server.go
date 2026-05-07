@@ -225,6 +225,10 @@ func syncConfigurations(coreOptions *options.CoreOptions) {
 		klog.V(3).InfoS("Syncing OAM configuration")
 		coreOptions.OAM.SyncToOAMGlobals()
 	}
+	if coreOptions.MultiCluster != nil && coreOptions.Controller != nil {
+		klog.V(3).InfoS("Syncing multi-cluster configuration to controller args")
+		coreOptions.Controller.EnableClusterGateway = coreOptions.MultiCluster.EnableClusterGateway
+	}
 }
 
 // setupLogging configures klog based on parsed observability settings
